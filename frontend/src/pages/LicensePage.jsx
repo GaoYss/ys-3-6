@@ -1,4 +1,4 @@
-import { Plus, RefreshCw, Save } from 'lucide-react'
+import { History, Plus, RefreshCw, Save, TimerReset } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { api } from '../api/client.js'
@@ -20,10 +20,12 @@ const initialForm = {
   notes: '',
 }
 
-export function LicensePage({ licenses, reload, notify }) {
+export function LicensePage({ licenses, reload, notify, onNavigate }) {
   const [form, setForm] = useState(initialForm)
-  const [filters, setFilters] = useState({ search: '', status: '' })
+  const [filters, setFilters] = useState({ search: '', status: '', showHistory: false })
   const [saving, setSaving] = useState(false)
+  const [historyTarget, setHistoryTarget] = useState(null)
+  const [historyData, setHistoryData] = useState(null)
 
   const filteredLicenses = useMemo(
     () =>
@@ -35,8 +37,10 @@ export function LicensePage({ licenses, reload, notify }) {
             .join(' ')
             .toLowerCase()
             .includes(keyword)
-        const matchStatus = !filters.status || item.computed_status === filters.status || item.status === filters.status
-        return matchKeyword && matchStatus
+        const matchStatus =
+          !filters.status || item.computed_status === filters.status || item.status === filters.status
+        const matchHistory = filters.showHistory ? true : item.is_current_version !== false
+        return matchKeyword && matchStatus && matchHistory
       }),
     [licenses, filters],
   )
@@ -55,6 +59,31 @@ export function LicensePage({ licenses, reload, notify }) {
       notify(error.message)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const openHistory = async (item) => {
+    setHistoryTarget(item)
+    try {
+      const data = await api.getLicenseHistory(item.id)
+      setHistoryData(Array.isArray(data) ? data : data.results || [])
+    } catch (error) {
+      notify(error.message)
+      setHistoryData([])
+    }
+  }
+
+  const closeHistory = () => {
+    setHistoryTarget(null)
+    setHistoryData(null)
+  }
+
+  const goToRenewal = (item) => {
+    if (item.has_active_renewal) {
+      notify('该证照已有进行中的续期申请')
+    }
+    if (onNavigate) {
+      onNavigate('renewals')
     }
   }
 
@@ -100,8 +129,15 @@ export function LicensePage({ licenses, reload, notify }) {
 
         <div className="panel table-panel">
           <div className="table-toolbar">
-            <input placeholder="搜索名称、编号、机关、部门" value={filters.search} onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))} />
-            <select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+            <input
+              placeholder="搜索名称、编号、机关、部门"
+              value={filters.search}
+              onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+            />
+            <select
+              value={filters.status}
+              onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
+            >
               <option value="">全部状态</option>
               {licenseStatuses.map((item) => (
                 <option key={item.value} value={item.value}>
@@ -109,6 +145,14 @@ export function LicensePage({ licenses, reload, notify }) {
                 </option>
               ))}
             </select>
+            <label className="checkbox-field">
+              <input
+                type="checkbox"
+                checked={filters.showHistory}
+                onChange={(event) => setFilters((c) => ({ ...c, showHistory: event.target.checked }))}
+              />
+              <span>显示历史版本</span>
+            </label>
           </div>
           {filteredLicenses.length ? (
             <div className="data-table">
@@ -117,16 +161,47 @@ export function LicensePage({ licenses, reload, notify }) {
                 <span>部门</span>
                 <span>到期</span>
                 <span>状态</span>
+                <span>操作</span>
               </div>
               {filteredLicenses.map((item) => (
                 <div className="table-row license-row" key={item.id}>
                   <div>
-                    <strong>{item.name}</strong>
-                    <span>{item.license_no}</span>
+                    <strong>
+                      {item.name}
+                      {item.version > 1 && <span className="version-tag">v{item.version}</span>}
+                    </strong>
+                    <span>
+                      {item.license_no}
+                      {item.is_current_version === false && <em className="history-tag">（历史）</em>}
+                    </span>
+                    {item.active_renewal_status && (
+                      <span className={`renewal-tag renewal-${item.active_renewal_status.status}`}>
+                        续期：{item.active_renewal_status.status_display}
+                      </span>
+                    )}
                   </div>
                   <span>{item.owner_department}</span>
                   <span>{item.expiry_date}</span>
                   <StatusBadge status={item.computed_status} />
+                  <div className="row-actions">
+                    <button
+                      className="chip-button"
+                      type="button"
+                      onClick={() => openHistory(item)}
+                      title="查看历史版本"
+                    >
+                      <History size={14} /> 历史
+                    </button>
+                    {item.is_current_version !== false && (
+                      <button
+                        className={`chip-button ${item.has_active_renewal ? 'chip-warning' : ''}`}
+                        type="button"
+                        onClick={() => goToRenewal(item)}
+                      >
+                        <TimerReset size={14} /> {item.has_active_renewal ? '续期中' : '续期'}
+                      </button>
+                    )}
+                  </div>
                 </div>
               ))}
             </div>
@@ -135,6 +210,45 @@ export function LicensePage({ licenses, reload, notify }) {
           )}
         </div>
       </div>
+
+      {historyTarget && historyData && (
+        <div className="modal-backdrop" onClick={closeHistory}>
+          <div className="modal modal-wide" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <h3>证照历史版本 - {historyTarget.name}</h3>
+              <button className="icon-button" type="button" onClick={closeHistory}>×</button>
+            </div>
+            <div className="modal-body">
+              <div className="data-table">
+                <div className="table-head license-row">
+                  <span>版本</span>
+                  <span>证照编号</span>
+                  <span>发证日期</span>
+                  <span>到期日期</span>
+                  <span>状态</span>
+                </div>
+                {historyData.map((h) => (
+                  <div className="table-row license-row" key={h.id}>
+                    <div>
+                      <strong>v{h.version}</strong>
+                      <span>{h.is_current_version !== false ? '（当前）' : ''}</span>
+                    </div>
+                    <span>{h.license_no}</span>
+                    <span>{h.issue_date}</span>
+                    <span>{h.expiry_date}</span>
+                    <StatusBadge status={h.computed_status} />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="modal-footer">
+              <button className="primary-button" type="button" onClick={closeHistory}>
+                关闭
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </section>
   )
 }

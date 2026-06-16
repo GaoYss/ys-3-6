@@ -18,3 +18,12 @@ export const borrowStatuses = [
   { value: 'returned', label: '已归还' },
   { value: 'overdue', label: '逾期未还' },
 ]
+
+export const renewalStatuses = [
+  { value: 'pending', label: '待提交' },
+  { value: 'reviewing', label: '审核中' },
+  { value: 'approved', label: '已批准' },
+  { value: 'in_progress', label: '续期中' },
+  { value: 'completed', label: '已完成' },
+  { value: 'rejected', label: '已拒绝' },
+]

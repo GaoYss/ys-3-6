@@ -6,6 +6,12 @@ const statusLabels = {
   borrowed: '借出中',
   returned: '已归还',
   overdue: '逾期未还',
+  pending: '待提交',
+  reviewing: '审核中',
+  approved: '已批准',
+  in_progress: '续期中',
+  completed: '已完成',
+  rejected: '已拒绝',
 }
 
 export function StatusBadge({ status }) {
