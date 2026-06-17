@@ -1,4 +1,4 @@
-import { CheckCircle2, Clock, Plus, RefreshCw, Save, Send, TimerReset, XCircle } from 'lucide-react'
+import { AlertTriangle, CheckCircle2, Clock, Plus, RefreshCw, Save, Send, TimerReset, XCircle } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { api } from '../api/client.js'
@@ -9,6 +9,23 @@ import { StatusBadge } from '../components/StatusBadge.jsx'
 function todayStr() {
   const d = new Date()
   return d.toISOString().slice(0, 10)
+}
+
+function isLicenseExpired(license) {
+  if (!license?.expiry_date) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const expiry = new Date(license.expiry_date)
+  expiry.setHours(0, 0, 0, 0)
+  return expiry < today
+}
+
+function hasActiveRenewal(license, renewals) {
+  if (!license?.id || !renewals?.length) return false
+  const activeStatuses = ['pending', 'reviewing', 'approved', 'in_progress']
+  return renewals.some(
+    (r) => r.license === license.id && activeStatuses.includes(r.status),
+  )
 }
 
 const initialForm = {
@@ -42,6 +59,21 @@ export function RenewalPage({ licenses, renewals, reload, notify }) {
     [licenses],
   )
 
+  const selectedLicense = useMemo(() => {
+    if (!form.license) return null
+    return currentLicenses.find((l) => l.id === form.license) || null
+  }, [form.license, currentLicenses])
+
+  const selectedLicenseExpired = useMemo(
+    () => selectedLicense && isLicenseExpired(selectedLicense),
+    [selectedLicense],
+  )
+
+  const selectedLicenseHasActiveRenewal = useMemo(
+    () => selectedLicense && hasActiveRenewal(selectedLicense, renewals),
+    [selectedLicense, renewals],
+  )
+
   const filteredRenewals = useMemo(
     () =>
       (renewals || []).filter((item) => {
@@ -66,6 +98,14 @@ export function RenewalPage({ licenses, renewals, reload, notify }) {
     event.preventDefault()
     if (!form.license) {
       notify('请选择要续期的证照')
+      return
+    }
+    if (selectedLicenseExpired) {
+      notify('该证照已过期，无法发起续期申请')
+      return
+    }
+    if (selectedLicenseHasActiveRenewal) {
+      notify('该证照已有进行中的续期申请，请先处理完成后再申请')
       return
     }
     setSaving(true)
@@ -170,13 +210,33 @@ export function RenewalPage({ licenses, renewals, reload, notify }) {
                 required
               >
                 <option value="">请选择证照</option>
-                {currentLicenses.map((lic) => (
-                  <option key={lic.id} value={lic.id}>
-                    {lic.name} ({lic.license_no}) - 到期: {lic.expiry_date}
-                  </option>
-                ))}
+                {currentLicenses.map((lic) => {
+                  const expired = isLicenseExpired(lic)
+                  const hasRenewal = hasActiveRenewal(lic, renewals)
+                  const disabled = expired || hasRenewal
+                  let label = `${lic.name} (${lic.license_no}) - 到期: ${lic.expiry_date}`
+                  if (expired) label += '  [已过期]'
+                  else if (hasRenewal) label += '  [续期中]'
+                  return (
+                    <option key={lic.id} value={lic.id} disabled={disabled}>
+                      {label}
+                    </option>
+                  )
+                })}
               </select>
             </label>
+            {selectedLicenseExpired && (
+              <div className="form-hint form-hint-danger">
+                <AlertTriangle size={14} />
+                <span>该证照已过期，无法发起续期申请</span>
+              </div>
+            )}
+            {!selectedLicenseExpired && selectedLicenseHasActiveRenewal && (
+              <div className="form-hint form-hint-warning">
+                <AlertTriangle size={14} />
+                <span>该证照已有进行中的续期申请，请先处理完成</span>
+              </div>
+            )}
             <Field label="申请人" value={form.applicant} onChange={(v) => setField('applicant', v)} required />
             <Field label="申请部门" value={form.applicant_department} onChange={(v) => setField('applicant_department', v)} required />
             <Field label="申请日期" type="date" value={form.apply_date} onChange={(v) => setField('apply_date', v)} required />

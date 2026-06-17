@@ -20,6 +20,7 @@ from .services import (
     reject_renewal,
     start_renewal_process,
     submit_renewal,
+    validate_renewal_creation,
 )
 
 
@@ -121,9 +122,30 @@ class LicenseRenewalViewSet(viewsets.ModelViewSet):
             queryset = queryset.filter(license_id=license_id)
         return queryset
 
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        license_obj = serializer.validated_data.get("license")
+        if license_obj:
+            try:
+                validate_renewal_creation(license_obj)
+            except ValueError as e:
+                return Response(
+                    {"detail": str(e)},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(
+            serializer.data,
+            status=status.HTTP_201_CREATED,
+            headers=headers,
+        )
+
     def perform_create(self, serializer):
-        renewal = serializer.save()
-        return renewal
+        serializer.save()
 
     @action(detail=True, methods=["post"], url_path="submit")
     def submit(self, request, pk=None):

@@ -68,6 +68,26 @@ def dashboard_stats():
     }
 
 
+def validate_renewal_creation(license_obj):
+    if not license_obj.is_current_version:
+        raise ValueError("只能对当前版本的证照发起续期申请")
+
+    if license_obj.expiry_date < timezone.localdate():
+        raise ValueError("该证照已过期，无法发起续期申请")
+
+    active_renewal_count = LicenseRenewal.objects.filter(
+        license=license_obj,
+        status__in=[
+            LicenseRenewal.Status.PENDING,
+            LicenseRenewal.Status.REVIEWING,
+            LicenseRenewal.Status.APPROVED,
+            LicenseRenewal.Status.IN_PROGRESS,
+        ],
+    ).count()
+    if active_renewal_count > 0:
+        raise ValueError("该证照已有进行中的续期申请，请先处理完成后再申请")
+
+
 def submit_renewal(renewal):
     renewal.status = LicenseRenewal.Status.REVIEWING
     renewal.save(update_fields=["status", "updated_at"])

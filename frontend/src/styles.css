@@ -213,6 +213,27 @@ h2 {
   font-weight: 600;
 }
 
+.form-hint {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  grid-column: 1 / -1;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.form-hint-danger {
+  color: #991b1b;
+  background: #fee2e2;
+}
+
+.form-hint-warning {
+  color: #92400e;
+  background: #fef3c7;
+}
+
 input,
 select,
 textarea {
