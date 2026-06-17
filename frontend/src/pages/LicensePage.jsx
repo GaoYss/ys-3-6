@@ -1,10 +1,19 @@
-import { History, Plus, RefreshCw, Save, TimerReset } from 'lucide-react'
+import { AlertTriangle, History, Plus, RefreshCw, Save, TimerReset } from 'lucide-react'
 import { useMemo, useState } from 'react'
 
 import { api } from '../api/client.js'
 import { licenseStatuses, licenseTypes } from '../api/options.js'
 import { EmptyState } from '../components/EmptyState.jsx'
 import { StatusBadge } from '../components/StatusBadge.jsx'
+
+function isLicenseExpired(license) {
+  if (!license?.expiry_date) return false
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  const expiry = new Date(license.expiry_date)
+  expiry.setHours(0, 0, 0, 0)
+  return expiry < today
+}
 
 const initialForm = {
   name: '',
@@ -79,8 +88,13 @@ export function LicensePage({ licenses, reload, notify, onNavigate }) {
   }
 
   const goToRenewal = (item) => {
+    if (isLicenseExpired(item)) {
+      notify('该证照已过期，无法发起续期申请')
+      return
+    }
     if (item.has_active_renewal) {
-      notify('该证照已有进行中的续期申请')
+      notify('该证照已有进行中的续期申请，请先处理完成后再申请')
+      return
     }
     if (onNavigate) {
       onNavigate('renewals')
@@ -194,11 +208,26 @@ export function LicensePage({ licenses, reload, notify, onNavigate }) {
                     </button>
                     {item.is_current_version !== false && (
                       <button
-                        className={`chip-button ${item.has_active_renewal ? 'chip-warning' : ''}`}
+                        className={`chip-button ${
+                          isLicenseExpired(item)
+                            ? 'chip-danger'
+                            : item.has_active_renewal
+                              ? 'chip-warning'
+                              : ''
+                        }`}
                         type="button"
                         onClick={() => goToRenewal(item)}
                       >
-                        <TimerReset size={14} /> {item.has_active_renewal ? '续期中' : '续期'}
+                        {isLicenseExpired(item) ? (
+                          <AlertTriangle size={14} />
+                        ) : (
+                          <TimerReset size={14} />
+                        )}{' '}
+                        {isLicenseExpired(item)
+                          ? '已过期'
+                          : item.has_active_renewal
+                            ? '续期中'
+                            : '续期'}
                       </button>
                     )}
                   </div>
